@@ -22,6 +22,7 @@ from ballsdex.core.utils.transformers import (
     RegimeTransform,
     SpecialTransform,
     BallEnabledTransform,
+    SpecialEnabledTransform,
 )
 from ballsdex.settings import settings
 
@@ -125,7 +126,7 @@ class Balls(app_commands.Group):
         try:
             for i in range(n):
                 if not countryball:
-                    ball = await countryball_cls.get_random(interaction.client)
+                    ball = await countryball_cls.get_random(interaction.client, respect_hidden_from_spawn=True)
                 else:
                     ball = countryball_cls(interaction.client, countryball)
                 ball.special = special
@@ -231,7 +232,7 @@ class Balls(app_commands.Group):
 
         await interaction.response.defer(ephemeral=True, thinking=True)
         if not countryball:
-            ball = await cog.countryball_cls.get_random(interaction.client)
+            ball = await cog.countryball_cls.get_random(interaction.client, respect_hidden_from_spawn=True)
         else:
             ball = cog.countryball_cls(interaction.client, countryball)
         ball.special = special
@@ -327,7 +328,9 @@ class Balls(app_commands.Group):
             for i in range(n):
                 if not countryball:
                     # Get random rare ball for each spawn
-                    rare_balls = await Ball.filter(rarity__gte=0.01, rarity__lte=2.5, enabled=True).all()
+                    rare_balls = await Ball.filter(
+                        rarity__gte=0.01, rarity__lte=2.5, enabled=True, hidden_from_spawn=False
+                    ).all()
                     if not rare_balls:
                         await interaction.followup.edit_message(
                             "@original",
@@ -370,7 +373,9 @@ class Balls(app_commands.Group):
         await interaction.response.defer(ephemeral=True, thinking=True)
         if not countryball:
             # Get random rare ball with rarity between 0.01 and 2.4
-            rare_balls = await Ball.filter(rarity__gte=0.01, rarity__lte=2.4, enabled=True).all()
+            rare_balls = await Ball.filter(
+                rarity__gte=0.01, rarity__lte=2.4, enabled=True, hidden_from_spawn=False
+            ).all()
             if not rare_balls:
                 await interaction.followup.send(
                     f"No rare {settings.plural_collectible_name} (rarity 0.03-2.4) are available.",
@@ -458,7 +463,9 @@ class Balls(app_commands.Group):
             return
 
         # Check if there are any balls available for the specified regime
-        regime_balls_count = await Ball.filter(regime_id=regime.pk, enabled=True, rarity__gt=0).count()
+        regime_balls_count = await Ball.filter(
+            regime_id=regime.pk, enabled=True, rarity__gt=0, hidden_from_spawn=False
+        ).count()
         if regime_balls_count == 0:
             await interaction.response.send_message(
                 f"No spawnable {settings.plural_collectible_name} found for regime **{regime.name}**. "
@@ -475,7 +482,9 @@ class Balls(app_commands.Group):
             
             for i in range(n):
                 # Get random ball from specified regime
-                regime_balls = await Ball.filter(regime_id=regime.pk, enabled=True, rarity__gt=0).all()
+                regime_balls = await Ball.filter(
+                    regime_id=regime.pk, enabled=True, rarity__gt=0, hidden_from_spawn=False
+                ).all()
                 if not regime_balls:
                     await interaction.followup.edit_message(
                         "@original",
@@ -517,7 +526,9 @@ class Balls(app_commands.Group):
         await interaction.response.defer(ephemeral=True, thinking=True)
         
         # Get a random ball from the specified regime
-        regime_balls = await Ball.filter(regime_id=regime.pk, enabled=True, rarity__gt=0).all()
+        regime_balls = await Ball.filter(
+            regime_id=regime.pk, enabled=True, rarity__gt=0, hidden_from_spawn=False
+        ).all()
         if not regime_balls:
             await interaction.followup.send(
                 f"No spawnable {settings.plural_collectible_name} found for regime **{regime.name}**.",
@@ -847,6 +858,96 @@ class Balls(app_commands.Group):
 
         await log_action(
             f"{interaction.user} transferred {transferred} balls "
+            f"from {from_user.id} to {user.id}.",
+            interaction.client,
+        )
+
+    @app_commands.command(name="transfer_filtered")
+    @app_commands.checks.has_any_role(*settings.root_role_ids)
+    async def transfer_filtered(
+        self,
+        interaction: discord.Interaction["BallsDexBot"],
+        from_user: discord.User,
+        user: discord.User,
+        footballer: BallEnabledTransform | None = None,
+        special: SpecialEnabledTransform | None = None,
+        only_non_specials: bool = False,
+    ):
+        """
+        Transfer items from one user to another, with optional filters for dex and specials.
+
+        Parameters
+        ----------
+        from_user: discord.User
+            The user whose items will be transferred.
+        user: discord.User
+            The user receiving the items.
+        footballer: BallEnabledTransform
+            Optional. Only transfer this specific footballer (Dex).
+        special: SpecialEnabledTransform
+            Optional. Only transfer items with this specific special.
+        only_non_specials: bool
+            If True, only items WITHOUT a special will be transferred.
+        """
+
+        await interaction.response.defer(ephemeral=True)
+
+        if from_user.id == user.id:
+            await interaction.followup.send(
+                "⚠️ You cannot transfer items to the same user.",
+                ephemeral=True,
+            )
+            return
+
+        oldPlayer = await Player.get_or_none(discord_id=from_user.id)
+        newPlayer, _ = await Player.get_or_create(discord_id=user.id)
+
+        if not oldPlayer:
+            await interaction.followup.send(
+                "❌ Source player not found in the database.",
+                ephemeral=True,
+            )
+            return
+
+        # Base query to target the old player's inventory
+        query = BallInstance.filter(player=oldPlayer)
+
+        # Filter by a specific footballer (Dex) if provided
+        if footballer:
+            query = query.filter(ball=footballer)
+
+        # Filter by a specific special, or explicitly filter out all specials
+        if special:
+            query = query.filter(special=special)
+        elif only_non_specials:
+            query = query.filter(special_id__isnull=True)
+
+        # Perform the bulk update query directly in the database
+        transferred = await query.update(player=newPlayer)
+
+        if not transferred:
+            await interaction.followup.send(
+                "⚠️ No items matching those filters were found in their inventory.",
+                ephemeral=True,
+            )
+            return
+
+        # Construct the success message dynamically based on applied filters
+        msg_lines = [f"✅ Transferred **{transferred} items** from `{oldPlayer.discord_id}` to `{newPlayer.discord_id}`."]
+
+        if footballer:
+            # Depending on your base model name, this might be `footballer.country` or `footballer.name`
+            msg_lines.append(f"• **Dex Filter:** {getattr(footballer, 'country', getattr(footballer, 'name', str(footballer)))}")
+        if special:
+            msg_lines.append(f"• **Special Filter:** {special.name}")
+        if only_non_specials:
+            msg_lines.append("• **Specials Excluded:** Only normal items transferred")
+
+        await interaction.followup.send("\n".join(msg_lines), ephemeral=True)
+
+        await log_action(
+            f"{interaction.user} transferred {transferred} filtered items "
+            f"(Dex: {footballer}, Special: {special}, Non-Special Only: {only_non_specials}) "
             f"from {from_user.id} to {user.id}.",
             interaction.client,
         )

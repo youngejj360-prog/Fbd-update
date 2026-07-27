@@ -192,16 +192,21 @@ class BallSpawnView(View):
         return view
 
     @classmethod
-    async def get_random(cls, bot: "BallsDexBot"):
-        """
-        Get a new instance with a random countryball. Rarity values are taken into account.
-        """
-        countryballs = list(filter(lambda m: m.enabled, balls.values()))
-        if not countryballs:
-            raise RuntimeError("No ball to spawn")
-        rarities = [x.rarity for x in countryballs]
-        cb = random.choices(population=countryballs, weights=rarities, k=1)[0]
-        return cls(bot, cb)
+    async def get_random(cls, bot: "BallsDexBot", respect_hidden_from_spawn: bool = False):
+            """
+            Get a new instance with a random countryball. Rarity values are taken into account.
+            """
+            if respect_hidden_from_spawn:
+                countryballs = list(
+                    filter(lambda m: m.enabled and not m.hidden_from_spawn, balls.values())
+                )
+            else:
+                countryballs = list(filter(lambda m: m.enabled, balls.values()))
+            if not countryballs:
+                raise RuntimeError("No ball to spawn")
+            rarities = [x.rarity for x in countryballs]
+            cb = random.choices(population=countryballs, weights=rarities, k=1)[0]
+            return cls(bot, cb)
 
     @property
     def name(self):

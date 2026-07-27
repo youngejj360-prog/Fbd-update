@@ -804,7 +804,9 @@ class Claim(commands.GroupCog, name="packs"):
                 pass
 
         player, _ = await Player.get_or_create(discord_id=user_id)
-        all_balls = await Ball.filter(rarity__gte=0.03, rarity__lte=30.0, enabled=True).all()
+        all_balls = await Ball.filter(
+            rarity__gte=0.03, rarity__lte=30.0, enabled=True, hidden_from_packs=False
+        ).all()
         
         if not all_balls:
             if fast_open:

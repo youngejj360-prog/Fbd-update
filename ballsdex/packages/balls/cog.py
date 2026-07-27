@@ -452,7 +452,6 @@ class Balls(commands.GroupCog, group_name=settings.players_group_cog_name):
         await pages.start()
 
     @app_commands.command()
-    @app_commands.checks.cooldown(1, 600, key=lambda i: i.user.id)
     async def unobtainable_completion(
         self,
         interaction: discord.Interaction["BallsDexBot"],
@@ -1026,7 +1025,6 @@ class Balls(commands.GroupCog, group_name=settings.players_group_cog_name):
         )
 
     @app_commands.command()
-    @app_commands.checks.cooldown(1, 60, key=lambda i: i.user.id)
     async def compare(
         self,
         interaction: discord.Interaction["BallsDexBot"],

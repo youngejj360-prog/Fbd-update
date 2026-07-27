@@ -165,6 +165,16 @@ class Ball(models.Model):
     tradeable = fields.BooleanField(
         default=True, description="Controls whether this ball can be traded or donated."
     )
+    hidden_from_packs = fields.BooleanField(
+        default=False,
+        description="If enabled, this footballer is excluded from pack draws that check "
+        "this flag (currently: /packs multipackly)",
+    )
+    hidden_from_spawn = fields.BooleanField(
+        default=False,
+        description="If enabled, this footballer is excluded from /spawn, /spawnrare, and "
+        "/spawnregime (including automatic wild spawns).",
+    )
     emoji_id = fields.BigIntField(
         description="Emoji ID for this ball", validators=[DiscordSnowflakeValidator()]
     )

@@ -216,6 +216,16 @@ class Ball(models.Model):
     tradeable = models.BooleanField(
         help_text="Whether this ball can be traded with others", default=True
     )
+    hidden_from_packs = models.BooleanField(
+        default=False,
+        help_text="If enabled, this footballer is excluded from pack draws that check "
+        "this flag (currently: /packs multipackly)",
+    )
+    hidden_from_spawn = models.BooleanField(
+        default=False,
+        help_text="If enabled, this footballer is excluded from /spawn, /spawnrare, and "
+        "/spawnregime (including automatic wild spawns).",
+    )
     economy = models.ForeignKey(
         Economy,
         on_delete=models.SET_NULL,
